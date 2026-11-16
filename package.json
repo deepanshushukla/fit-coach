@@ -9,8 +9,7 @@
     "apps/demo-react-native",
     "packages/types",
     "packages/core",
-    "packages/react-native",
-    "packages/web-client"
+    "packages/react-native"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
