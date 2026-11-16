@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"],
+    // Express types route params as an index signature ({[key: string]: string}), so with
+    // noUncheckedIndexedAccess every req.params.x read looks like string|undefined even
+    // though Express guarantees it's present once the route pattern matched. Pure data
+    // structures in packages/core and packages/types keep the stricter default.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src"],
+  "exclude": ["src/**/__tests__"]
+}

@@ -1,0 +1,370 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlatformRole {
+  NONE
+  SUPER_ADMIN
+  SUPPORT
+  EXERCISE_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  DEVELOPER
+  ANALYST
+}
+
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MemberStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum AppStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum EnvironmentName {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+}
+
+enum EnvironmentStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum CredentialStatus {
+  ACTIVE
+  ROTATED
+  REVOKED
+}
+
+enum PublicationStatus {
+  DRAFT
+  TESTING
+  PUBLISHED
+  DEPRECATED
+}
+
+enum LicenceStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum ExerciseAccess {
+  INCLUDE
+  EXCLUDE
+}
+
+enum SigningKeyStatus {
+  ACTIVE
+  ROTATED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String
+  platformRole PlatformRole @default(NONE)
+  status       UserStatus   @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  memberships        OrganisationMember[]
+  createdInvitations Invitation[]         @relation("InvitationCreatedBy")
+  refreshTokens      RefreshToken[]
+  passwordResets     PasswordResetToken[]
+  auditLogs          AuditLog[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Organisation {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  status    OrgStatus @default(ACTIVE)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  members      OrganisationMember[]
+  invitations  Invitation[]
+  applications Application[]
+  licences     Licence[]
+  usageEvents  UsageEvent[]
+  auditLogs    AuditLog[]
+}
+
+model OrganisationMember {
+  id             String       @id @default(cuid())
+  organisationId String
+  userId         String
+  role           OrgRole
+  status         MemberStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, userId])
+  @@index([userId])
+}
+
+model Invitation {
+  id             String    @id @default(cuid())
+  organisationId String
+  email          String
+  role           OrgRole
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdByUserId String
+  createdAt      DateTime  @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("InvitationCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([organisationId])
+}
+
+model Application {
+  id             String    @id @default(cuid())
+  organisationId String
+  name           String
+  platforms      String[]
+  status         AppStatus @default(ACTIVE)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organisation Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  environments ApplicationEnvironment[]
+  licences     Licence[]
+  usageEvents  UsageEvent[]
+
+  @@index([organisationId])
+}
+
+model ApplicationEnvironment {
+  id                 String            @id @default(cuid())
+  applicationId      String
+  name               EnvironmentName
+  publicIdentifier   String            @unique
+  status             EnvironmentStatus @default(ACTIVE)
+  allowedSdkVersions String[]
+  bundleIdentifiers  String[]
+  credentialStatus   CredentialStatus  @default(ACTIVE)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  lastUsedAt         DateTime?
+
+  application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  usageEvents UsageEvent[]
+
+  @@unique([applicationId, name])
+}
+
+model Plan {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  status        String   @default("active")
+  billingPeriod String   @default("monthly")
+  createdAt     DateTime @default(now())
+
+  planExercises PlanExercise[]
+  licences      Licence[]
+}
+
+model PlanExercise {
+  id                     String @id @default(cuid())
+  planId                 String
+  exerciseId             String
+  exerciseVersionPolicy  String @default("latest_published")
+
+  plan     Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, exerciseId])
+}
+
+model Exercise {
+  id                 String             @id
+  name               String
+  description        String             @default("")
+  instructions       String             @default("")
+  publicationStatus  PublicationStatus  @default(DRAFT)
+  currentVersion     String
+  supportedPlatforms String[]
+  supportedViews     String[]
+  evaluatorVersion   String
+  limitations        String[]
+  setupGuidance      String             @default("")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  versions           ExerciseVersion[]
+  planExercises      PlanExercise[]
+  exerciseOverrides  LicenceExerciseOverride[]
+}
+
+model ExerciseVersion {
+  id                 String   @id @default(cuid())
+  exerciseId         String
+  version            String
+  evaluatorVersion   String
+  modelCompatibility String
+  configuration      Json
+  validationReport   Json?
+  publishedAt        DateTime?
+  createdAt          DateTime @default(now())
+
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([exerciseId, version])
+}
+
+model Licence {
+  id                    String        @id @default(cuid())
+  organisationId        String
+  applicationId         String?
+  planId                String
+  status                LicenceStatus @default(ACTIVE)
+  startsAt              DateTime      @default(now())
+  expiresAt             DateTime
+  offlineGraceSeconds   Int           @default(259200)
+  entitlementVersion    Int           @default(1)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  organisation       Organisation              @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  application        Application?              @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  plan               Plan                      @relation(fields: [planId], references: [id])
+  exerciseOverrides  LicenceExerciseOverride[]
+  entitlementIssues  EntitlementIssue[]
+
+  @@index([organisationId])
+  @@index([applicationId])
+}
+
+model LicenceExerciseOverride {
+  id         String         @id @default(cuid())
+  licenceId  String
+  exerciseId String
+  access     ExerciseAccess
+
+  licence  Licence  @relation(fields: [licenceId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([licenceId, exerciseId])
+}
+
+model EntitlementIssue {
+  id                 String    @id @default(cuid())
+  licenceId          String
+  entitlementVersion Int
+  keyId              String
+  issuedAt           DateTime  @default(now())
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  claimsHash         String
+
+  licence Licence @relation(fields: [licenceId], references: [id], onDelete: Cascade)
+
+  @@index([licenceId])
+}
+
+/// Public verification keys for entitlement signing. The private key never lives in
+/// this table in a production deployment — it belongs in a KMS/HSM. For local/dev use
+/// this reference implementation also stores an encrypted private key here so the API
+/// can sign tokens without an external KMS dependency; see docs/security for the gap.
+model SigningKey {
+  id            String           @id
+  publicKeyPem  String
+  privateKeyPem String
+  algorithm     String           @default("RS256")
+  status        SigningKeyStatus @default(ACTIVE)
+  createdAt     DateTime         @default(now())
+  rotatedAt     DateTime?
+}
+
+model UsageEvent {
+  id             String   @id @default(cuid())
+  organisationId String
+  applicationId  String
+  environmentId  String
+  eventType      String
+  exerciseId     String?
+  sdkVersion     String
+  platform       String
+  eventTimestamp DateTime
+  receivedAt     DateTime @default(now())
+  metadata       Json     @default("{}")
+
+  organisation Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  application  Application             @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  environment  ApplicationEnvironment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId, eventTimestamp])
+  @@index([applicationId, eventTimestamp])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  actorUserId    String?
+  organisationId String?
+  action         String
+  resourceType   String
+  resourceId     String
+  requestId      String?
+  createdAt      DateTime @default(now())
+  metadata       Json     @default("{}")
+
+  actor        User?         @relation(fields: [actorUserId], references: [id])
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId, createdAt])
+}
