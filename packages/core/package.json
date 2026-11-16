@@ -1,0 +1,22 @@
+{
+  "name": "@formcoach/core",
+  "version": "0.1.0",
+  "description": "Portable exercise intelligence logic: geometry, smoothing, state machines and exercise evaluators",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "test": "node --import tsx --test src/__tests__/*.test.ts",
+    "fixtures:generate": "tsx src/fixtures/generate.ts"
+  },
+  "dependencies": {
+    "@formcoach/types": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "tsx": "^4.19.2",
+    "@types/node": "^22.10.2"
+  }
+}
