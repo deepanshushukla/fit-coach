@@ -1,0 +1,29 @@
+{
+  "name": "@formcoach/react-native",
+  "version": "0.1.0",
+  "description": "FormCoach React Native SDK facade: session lifecycle, typed events, camera component",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test src/__tests__/*.test.ts"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-native": ">=0.74"
+  },
+  "dependencies": {
+    "@formcoach/types": "0.1.0",
+    "@formcoach/core": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "tsx": "^4.19.2",
+    "@types/node": "^22.10.2",
+    "react": "^18.3.1",
+    "react-native": "^0.76.3",
+    "@types/react": "^18.3.12"
+  }
+}

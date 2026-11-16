@@ -6,6 +6,7 @@ export * from './confidence-gate';
 export * from './feedback';
 export * from './evaluator';
 export * from './registry';
+export * from './simulation';
 export { SquatEvaluator } from './exercises/squat';
 export { PushUpEvaluator } from './exercises/push-up';
 export { LungeEvaluator } from './exercises/lunge';
