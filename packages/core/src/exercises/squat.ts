@@ -1,5 +1,5 @@
 import type { BodyView, LandmarkId, PoseFrame, TrackingStatus } from '@formcoach/types';
-import { averageConfidence, calculateAngle, resolveLandmark, segmentInclinationFromVertical } from '../geometry';
+import { averageConfidence, calculateAngle, distance, type Point, resolveLandmark, segmentInclinationFromVertical } from '../geometry';
 import { checkRequiredLandmarks } from '../landmark-validation';
 import { Cooldown, Hysteresis, PhaseTimer } from '../state-helpers';
 import { ConfidenceGate } from '../confidence-gate';
@@ -26,8 +26,30 @@ const DEPTH_CONFIDENCE_PERSISTENCE_MS = 100;
 /** Forward lean of the torso from vertical, in degrees, beyond which we flag back rounding risk. */
 const BACK_ROUNDING_LEAN_DEGREES = 35;
 const BACK_ROUNDING_PERSISTENCE_MS = 300;
+/**
+ * Minimum hip drop from the calibrated standing baseline, as a fraction of torso height,
+ * required (alongside the knee angle) to count as real squat depth. Knee angle alone can't
+ * tell a squat from standing still and bending/lifting one knee — the hip has to actually
+ * descend too.
+ */
+const MIN_HIP_DROP_RATIO = 0.3;
+/**
+ * How long to wait after entering `descending` before nudging for more depth. Without this
+ * delay the cue would fire the instant the knees start bending, before the lifter has had any
+ * real chance to go lower.
+ */
+const DESCENDING_GUIDANCE_DELAY_MS = 400;
 
-const FORM_RULES: Record<'back_rounding' | 'insufficient_depth', FormRuleDefinition> = {
+/**
+ * How long a required landmark may stay below the confidence threshold before it's treated
+ * as genuinely lost. A single-frame confidence dip (e.g. the ankle's MediaPipe `presence`
+ * score briefly dropping under threshold from partial occlusion at full squat depth) would
+ * otherwise instantly discard an in-progress rep via resetPhaseOnTrackingLoss — this grace
+ * window absorbs brief blips while still catching sustained, real tracking loss.
+ */
+const LANDMARK_DROPOUT_GRACE_MS = 400;
+
+const FORM_RULES: Record<'back_rounding' | 'insufficient_depth' | 'go_lower', FormRuleDefinition> = {
   back_rounding: {
     issueId: 'back_rounding',
     severity: 'warning',
@@ -41,6 +63,13 @@ const FORM_RULES: Record<'back_rounding' | 'insufficient_depth', FormRuleDefinit
     message: 'Try to squat a little deeper for a full rep.',
     priority: 3,
     cooldownMs: 4000,
+  },
+  go_lower: {
+    issueId: 'go_lower',
+    severity: 'info',
+    message: 'Go a little lower to hit full depth.',
+    priority: 4,
+    cooldownMs: 2500,
   },
 };
 
@@ -59,6 +88,9 @@ export class SquatEvaluator implements ExerciseEvaluator {
    * misread as the start (and, moments later, the false completion) of a brand new rep.
    */
   private awaitingReacquisitionBaseline = false;
+
+  /** Calibrated standing hip height (normalised y), refreshed whenever confirmed standing. */
+  private standingHipY: number | undefined;
 
   private readonly phaseTimer = new PhaseTimer();
   private readonly standingHysteresis = new Hysteresis({
@@ -79,6 +111,22 @@ export class SquatEvaluator implements ExerciseEvaluator {
   private readonly insufficientDepthCooldown = new Cooldown(4000);
 
   private lastAssessment: 'valid' | 'insufficient_data' | 'not_evaluated' = 'not_evaluated';
+
+  private readonly lastKnownPoints = new Map<LandmarkId, Point>();
+  private readonly lastKnownAtMs = new Map<LandmarkId, number>();
+
+  /** Resolves a landmark directly if confident, otherwise falls back to a recent cached position within the grace window. */
+  private resolveWithGrace(landmarks: PoseFrame['landmarks'], id: LandmarkId, minConfidence: number, timestampMs: number): Point | undefined {
+    const direct = resolveLandmark(landmarks, id, minConfidence);
+    if (direct) {
+      this.lastKnownPoints.set(id, direct);
+      this.lastKnownAtMs.set(id, timestampMs);
+      return direct;
+    }
+    const lastAt = this.lastKnownAtMs.get(id);
+    if (lastAt === undefined) return undefined;
+    return timestampMs - lastAt <= LANDMARK_DROPOUT_GRACE_MS ? this.lastKnownPoints.get(id) : undefined;
+  }
 
   validateConfiguration(config: unknown): ValidationResult {
     const errors: string[] = [];
@@ -163,20 +211,22 @@ export class SquatEvaluator implements ExerciseEvaluator {
       `${side}_knee`,
       `${side}_ankle`,
     ];
-    const check = checkRequiredLandmarks(input.landmarks, requiredIds, minConfidence);
+    const directCheck = checkRequiredLandmarks(input.landmarks, requiredIds, minConfidence);
+
+    const shoulder = this.resolveWithGrace(input.landmarks, `${side}_shoulder`, minConfidence, input.timestampMs);
+    const hip = this.resolveWithGrace(input.landmarks, `${side}_hip`, minConfidence, input.timestampMs);
+    const knee = this.resolveWithGrace(input.landmarks, `${side}_knee`, minConfidence, input.timestampMs);
+    const ankle = this.resolveWithGrace(input.landmarks, `${side}_ankle`, minConfidence, input.timestampMs);
 
     let trackingStatus: TrackingStatus = 'tracking';
-    if (!check.ok) {
-      trackingStatus = check.missing.length === requiredIds.length ? 'lost' : 'partial';
+    if (!shoulder || !hip || !knee || !ankle) {
+      const missingCount = [shoulder, hip, knee, ankle].filter((p) => !p).length;
+      trackingStatus = missingCount === requiredIds.length ? 'lost' : 'partial';
       this.lastAssessment = 'not_evaluated';
       this.resetPhaseOnTrackingLoss();
       return { timestampMs: input.timestampMs, trackingStatus, events };
     }
-
-    const shoulder = resolveLandmark(input.landmarks, `${side}_shoulder`, minConfidence)!;
-    const hip = resolveLandmark(input.landmarks, `${side}_hip`, minConfidence)!;
-    const knee = resolveLandmark(input.landmarks, `${side}_knee`, minConfidence)!;
-    const ankle = resolveLandmark(input.landmarks, `${side}_ankle`, minConfidence)!;
+    trackingStatus = directCheck.ok ? 'tracking' : 'partial';
 
     const rawKneeAngle = calculateAngle(hip, knee, ankle);
     const kneeAngle = this.smoother.smooth('kneeAngle', rawKneeAngle, input.timestampMs);
@@ -189,12 +239,21 @@ export class SquatEvaluator implements ExerciseEvaluator {
     const confidence = averageConfidence(input.landmarks, requiredIds);
     const isStanding = this.standingHysteresis.update(kneeAngle);
 
-    events.push(...this.advancePhase(kneeAngle, isStanding, input.timestampMs));
+    const torsoHeight = distance(shoulder, hip) || 1;
+    // Deliberately not `isStanding` (the latched hysteresis flag): that stays true across
+    // the whole 150-160 degree exit band to avoid flicker, so it would keep chasing the hip
+    // down as the squat begins and the real baseline would never freeze at true standing
+    // height. Only refresh while actually near full knee extension.
+    if (kneeAngle >= STANDING_KNEE_ANGLE) this.standingHipY = hip.y;
+    const hipDropRatio = this.standingHipY !== undefined ? (hip.y - this.standingHipY) / torsoHeight : 0;
+    const realDepthReached = kneeAngle <= DEPTH_KNEE_ANGLE && hipDropRatio >= MIN_HIP_DROP_RATIO;
+
+    events.push(...this.advancePhase(kneeAngle, realDepthReached, isStanding, input.timestampMs));
 
     const depthAssessment = this.depthGate.evaluate({
       measurable: true,
       confidence,
-      conditionMet: kneeAngle <= DEPTH_KNEE_ANGLE,
+      conditionMet: realDepthReached,
       timestampMs: input.timestampMs,
     });
     if (depthAssessment === 'valid') this.reachedDepthThisRep = true;
@@ -221,6 +280,13 @@ export class SquatEvaluator implements ExerciseEvaluator {
     ) {
       candidates.push({ rule: FORM_RULES.insufficient_depth, timestampMs: input.timestampMs });
     }
+    if (
+      this.phase === 'descending' &&
+      !realDepthReached &&
+      this.phaseTimer.hasMetMinDuration(input.timestampMs, DESCENDING_GUIDANCE_DELAY_MS)
+    ) {
+      candidates.push({ rule: FORM_RULES.go_lower, timestampMs: input.timestampMs });
+    }
 
     const chosen = this.feedbackController.select(candidates);
     if (chosen) {
@@ -238,7 +304,12 @@ export class SquatEvaluator implements ExerciseEvaluator {
     return { timestampMs: input.timestampMs, trackingStatus, events };
   }
 
-  private advancePhase(kneeAngle: number, isStanding: boolean, timestampMs: number): EvaluatorEvent[] {
+  private advancePhase(
+    kneeAngle: number,
+    depthReached: boolean,
+    isStanding: boolean,
+    timestampMs: number
+  ): EvaluatorEvent[] {
     const events: EvaluatorEvent[] = [];
     const previousPhase = this.phase;
 
@@ -254,7 +325,7 @@ export class SquatEvaluator implements ExerciseEvaluator {
         }
         break;
       case 'descending':
-        if (kneeAngle <= DEPTH_KNEE_ANGLE) {
+        if (depthReached) {
           this.phase = 'bottom';
           this.phaseTimer.enterPhase(timestampMs);
         } else if (isStanding) {
@@ -279,7 +350,7 @@ export class SquatEvaluator implements ExerciseEvaluator {
           });
           this.reachedDepthThisRep = false;
           this.phase = 'ready';
-        } else if (kneeAngle <= DEPTH_KNEE_ANGLE) {
+        } else if (depthReached) {
           this.phase = 'bottom';
           this.phaseTimer.enterPhase(timestampMs);
         }
@@ -297,6 +368,7 @@ export class SquatEvaluator implements ExerciseEvaluator {
       this.phase = 'ready';
       this.reachedDepthThisRep = false;
       this.awaitingReacquisitionBaseline = true;
+      this.standingHipY = undefined;
       this.phaseTimer.reset();
       this.standingHysteresis.reset();
       this.depthGate.reset();
@@ -310,6 +382,7 @@ export class SquatEvaluator implements ExerciseEvaluator {
     this.reachedDepthThisRep = false;
     this.trackedSide = undefined;
     this.awaitingReacquisitionBaseline = false;
+    this.standingHipY = undefined;
     this.phaseTimer.reset();
     this.standingHysteresis.reset();
     this.depthGate.reset();
@@ -318,6 +391,8 @@ export class SquatEvaluator implements ExerciseEvaluator {
     this.smoother.reset();
     this.insufficientDepthCooldown.reset();
     this.lastAssessment = 'not_evaluated';
+    this.lastKnownPoints.clear();
+    this.lastKnownAtMs.clear();
   }
 
   getMetrics(): ExerciseMetrics {

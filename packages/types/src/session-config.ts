@@ -22,6 +22,10 @@ export interface InitializeConfig {
 
 export interface SessionCameraConfig {
   facing: CameraFacing;
+  /** Omit to leave resolution to the platform default. */
+  resolution?: '480p' | '720p' | '1080p';
+  /** Omit to leave frame rate to the platform default. */
+  targetFps?: number;
 }
 
 export interface SessionSubjectConfig {

@@ -1,4 +1,4 @@
-import type { Landmarks, PoseFrame } from '@formcoach/types';
+import type { BodyView, Landmarks, PoseFrame } from '@formcoach/types';
 
 /**
  * Pure, deterministic synthetic pose generator: nextFrame(t) depends only on t, not on
@@ -59,6 +59,45 @@ function squatLikeFrame(timestampMs: number, kneeAngleDeg: number): PoseFrame {
   return { timestampMs, landmarks, mirrored: false, rotationDegrees: 0, imageWidth: 1280, imageHeight: 720 };
 }
 
+/**
+ * Front-view counterpart to squatLikeFrame: two distinct legs (not a single sagittal-plane
+ * leg duplicated), driven by the same knee-angle parameter so standing/depth behave the
+ * same way, but with knee x-position controllable independently of ankle x-position to
+ * simulate knee valgus (knees caving inward).
+ */
+function squatFrontLikeFrame(timestampMs: number, kneeAngleDeg: number, kneeInsetAmount = 0): PoseFrame {
+  const shankLength = 0.22;
+  const thighLength = 0.22;
+  const torsoLength = 0.3;
+  const stanceHalfWidth = 0.09;
+
+  const thighAngle = deg2rad(180 - kneeAngleDeg);
+  const ankleY = 0.9;
+  const kneeY = ankleY - shankLength;
+  const hipY = kneeY - thighLength * Math.cos(thighAngle);
+  const shoulderY = hipY - torsoLength;
+
+  const ankleHalfWidth = stanceHalfWidth;
+  const kneeHalfWidth = stanceHalfWidth * (1 - kneeInsetAmount);
+  const hipHalfWidth = stanceHalfWidth * 0.8;
+  const shoulderHalfWidth = stanceHalfWidth * 1.3;
+
+  const withConf = (p: { x: number; y: number }) => ({ ...p, visibility: 1, presence: 1 });
+
+  const landmarks: Landmarks = {
+    left_shoulder: withConf({ x: 0.5 - shoulderHalfWidth, y: shoulderY }),
+    right_shoulder: withConf({ x: 0.5 + shoulderHalfWidth, y: shoulderY }),
+    left_hip: withConf({ x: 0.5 - hipHalfWidth, y: hipY }),
+    right_hip: withConf({ x: 0.5 + hipHalfWidth, y: hipY }),
+    left_knee: withConf({ x: 0.5 - kneeHalfWidth, y: kneeY }),
+    right_knee: withConf({ x: 0.5 + kneeHalfWidth, y: kneeY }),
+    left_ankle: withConf({ x: 0.5 - ankleHalfWidth, y: ankleY }),
+    right_ankle: withConf({ x: 0.5 + ankleHalfWidth, y: ankleY }),
+  };
+
+  return { timestampMs, landmarks, mirrored: false, rotationDegrees: 0, imageWidth: 1280, imageHeight: 720 };
+}
+
 function pushUpLikeFrame(timestampMs: number, elbowAngleDeg: number): PoseFrame {
   const upperArmLength = 0.18;
   const forearmLength = 0.18;
@@ -92,7 +131,17 @@ function pushUpLikeFrame(timestampMs: number, elbowAngleDeg: number): PoseFrame 
 
 const REP_CYCLE_MS = 2200;
 
-export function createSyntheticFrameGenerator(exerciseId: string): SyntheticFrameGenerator {
+export function createSyntheticFrameGenerator(
+  exerciseId: string,
+  requiredView: BodyView = 'side'
+): SyntheticFrameGenerator {
+  if (exerciseId === 'squat' && requiredView === 'front') {
+    return {
+      exerciseId,
+      nextFrame: (t) => squatFrontLikeFrame(t, triangleWave(t, REP_CYCLE_MS, 170, 80)),
+    };
+  }
+
   switch (exerciseId) {
     case 'squat':
     case 'lunge':

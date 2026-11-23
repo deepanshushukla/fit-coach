@@ -1,7 +1,18 @@
+const DOCS_SITE_URL = import.meta.env.VITE_DOCS_URL ?? 'http://localhost:5174';
+
 export function DocsPage() {
   return (
     <div>
       <h2>SDK & documentation</h2>
+      <div className="card">
+        <p className="muted">
+          Full API reference, SDK reference, and pricing now live at{' '}
+          <a href={DOCS_SITE_URL} target="_blank" rel="noreferrer">
+            the FormCoach docs site
+          </a>
+          .
+        </p>
+      </div>
       <div className="card">
         <h3>Supported SDKs</h3>
         <table>
@@ -26,12 +37,12 @@ export function DocsPage() {
             <tr>
               <td>Android (native)</td>
               <td><code>com.formcoach:formcoach-android</code></td>
-              <td><span className="badge">Interface defined, not implemented</span></td>
+              <td><span className="badge success">Squat-only, launch-verified on an emulator</span></td>
             </tr>
             <tr>
               <td>iOS (native)</td>
               <td><code>FormCoachSDK</code></td>
-              <td><span className="badge">Interface defined, not implemented</span></td>
+              <td><span className="badge success">Squat-only, launch-verified on a simulator</span></td>
             </tr>
             <tr>
               <td>Flutter</td>

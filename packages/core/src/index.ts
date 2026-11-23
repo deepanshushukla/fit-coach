@@ -8,5 +8,6 @@ export * from './evaluator';
 export * from './registry';
 export * from './simulation';
 export { SquatEvaluator } from './exercises/squat';
+export { SquatFrontViewEvaluator } from './exercises/squat-front';
 export { PushUpEvaluator } from './exercises/push-up';
 export { LungeEvaluator } from './exercises/lunge';

@@ -4,16 +4,8 @@ import Foundation
 /// evaluation all happen behind this protocol (spec 7.2/8.5). No frame buffers cross
 /// into any bridge — only the compact types below do.
 ///
-/// NOT IMPLEMENTED. This file defines the contract only; see native/ios/README.md.
-/// It intentionally has no Xcode project and has never been compiled.
-
-public struct PosePoint {
-    public let x: Float
-    public let y: Float
-    public let z: Float?
-    public let visibility: Float?
-    public let presence: Float?
-}
+/// Implemented by FormCoachEngineImpl, wiring AVCaptureBridge -> MediaPipePoseSource ->
+/// SquatEvaluator. See native/ios/README.md for what's real vs. still a known limitation.
 
 public enum TrackingStatus: String {
     case ready, tracking, partial, lost, calibrating
@@ -32,19 +24,56 @@ public struct InitializeConfig {
     public let environment: String
     public let targetFps: Int
     public let processingResolution: String
+
+    public init(appId: String, environment: String, targetFps: Int = 24, processingResolution: String = "720p") {
+        self.appId = appId
+        self.environment = environment
+        self.targetFps = targetFps
+        self.processingResolution = processingResolution
+    }
 }
 
 public struct CreateSessionConfig {
     public let exercise: String
     public let cameraFacing: CameraFacing
     public let requiredView: BodyView
+
+    public init(exercise: String, cameraFacing: CameraFacing, requiredView: BodyView) {
+        self.exercise = exercise
+        self.cameraFacing = cameraFacing
+        self.requiredView = requiredView
+    }
 }
 
+/// Mirrors packages/types/src/events.ts's FormCoachEventMap, flattened for the Swift bridge.
 public enum FormCoachEvent {
-    case trackingUpdate(sessionId: String, timestampMs: Int64, status: TrackingStatus)
-    case phaseChanged(sessionId: String, timestampMs: Int64, fromPhase: String, toPhase: String)
-    case repCompleted(sessionId: String, timestampMs: Int64, repCount: Int, quality: String)
-    case formIssue(sessionId: String, timestampMs: Int64, issueId: String, severity: String, message: String)
+    case ready(sessionId: String, timestampMs: Int64, exerciseId: String, evaluatorVersion: String)
+    case trackingUpdate(sessionId: String, timestampMs: Int64, status: TrackingStatus, visibleLandmarkCount: Int)
+    case trackingLost(sessionId: String, timestampMs: Int64, reason: String)
+    case calibrationRequired(sessionId: String, timestampMs: Int64, requiredView: BodyView, guidance: String)
+    case calibrationCompleted(sessionId: String, timestampMs: Int64, requiredView: BodyView)
+    case phaseChanged(sessionId: String, timestampMs: Int64, exerciseId: String, fromPhase: String, toPhase: String)
+    case repCompleted(sessionId: String, timestampMs: Int64, exerciseId: String, repCount: Int, quality: String)
+    case formIssue(
+        sessionId: String,
+        timestampMs: Int64,
+        exerciseId: String,
+        issueId: String,
+        severity: String,
+        message: String,
+        assessment: String,
+        confidence: Float
+    )
+    case sessionCompleted(
+        sessionId: String,
+        timestampMs: Int64,
+        exerciseId: String,
+        evaluatorVersion: String,
+        startedAtMs: Int64,
+        endedAtMs: Int64,
+        repCount: Int,
+        formIssueCounts: [String: Int]
+    )
     case sessionError(sessionId: String, code: String, message: String, recoverable: Bool)
 }
 

@@ -6,6 +6,7 @@
   "workspaces": [
     "apps/api",
     "apps/portal",
+    "apps/docs",
     "apps/demo-react-native",
     "packages/types",
     "packages/core",

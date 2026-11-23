@@ -14,4 +14,7 @@ export const env = {
   refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL_SECONDS ?? 2592000),
   sdkSessionTokenTtlSeconds: Number(process.env.SDK_SESSION_TOKEN_TTL_SECONDS ?? 3600),
   entitlementIssuer: process.env.ENTITLEMENT_ISSUER ?? 'https://api.formcoach.example',
+  signingKeyProvider: (process.env.SIGNING_KEY_PROVIDER ?? 'local') as 'local' | 'aws-kms',
+  usageRetentionDays: process.env.USAGE_RETENTION_DAYS ? Number(process.env.USAGE_RETENTION_DAYS) : undefined,
+  auditLogRetentionDays: process.env.AUDIT_LOG_RETENTION_DAYS ? Number(process.env.AUDIT_LOG_RETENTION_DAYS) : undefined,
 };

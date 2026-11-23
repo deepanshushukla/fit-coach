@@ -1,12 +1,31 @@
-# SDK documentation site — deferred
+# FormCoach public site
 
-A standalone docs site (e.g. Docusaurus, per spec 18) was deprioritised in favour of
-building the actual SDK, backend and portal first — the recommended sequence in spec
-section 25 explicitly defers "Documentation, sample apps and release automation" to
-Sprint group F, after the SDK/licensing/portal core is working.
+Real Vite/React app (not deferred anymore) covering the marketing/product overview, the
+full REST API reference, the React Native SDK reference, and a pricing page. Mirrors
+`apps/portal`'s stack (React 18, react-router-dom v6, Vite 5, plain CSS with the same
+design tokens) and its plain-`fetch` API pattern, trimmed down since this site only ever
+calls two public, unauthenticated endpoints.
 
-A minimal equivalent exists today: the portal's "SDK & docs" page
-(`apps/portal/src/pages/Docs.tsx`) shows the supported-SDK matrix and a quick
-integration snippet. When this becomes its own site, it should absorb that content
-plus the full API reference, the exercise validation reports (spec 17.4), and the
-entitlement/offline-policy explainer currently living in `docs/security/`.
+## Running it
+
+```bash
+cd apps/docs
+npm install
+npm run dev   # http://localhost:5174
+```
+
+Run `apps/api` (`cd apps/api && npm run dev`, seeded via `npm run db:seed`) alongside it
+if you want the Pricing page's live `GET /v1/plans` call to return real data instead of
+an error banner.
+
+## What's live vs. static
+
+- **Pricing page** fetches `GET /v1/plans` live — the plan names/exercise lists you see
+  are whatever the backend is actually configured with.
+- **Home and SDK pages** are static copy, hand-written from the actual router code and
+  `packages/react-native`'s exported surface — not generated from an OpenAPI spec or any
+  other source of truth. Keeping that in sync by hand is a known maintenance cost; a
+  reasonable v2 improvement is generating the API reference from the zod schemas already
+  in `apps/api/src/modules/*/router.ts` instead.
+- **API reference page** is likewise hand-written from the real routers — every
+  endpoint listed is something `apps/api` actually serves today.

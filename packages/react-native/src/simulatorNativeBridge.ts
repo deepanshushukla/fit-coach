@@ -45,13 +45,13 @@ export class SimulatorNativeBridge implements NativeBridge {
   private readonly sessions = new Map<string, InternalSession>();
 
   async createSession(config: CreateSessionConfig): Promise<NativeSessionHandle> {
-    const evaluator = createEvaluator(config.exercise);
+    const evaluator = createEvaluator(config.exercise, config.subject.requiredView);
     if (!evaluator) {
       throw new FormCoachError('EXERCISE_NOT_FOUND', `Unknown exercise id '${config.exercise}'.`);
     }
     let generator: SyntheticFrameGenerator;
     try {
-      generator = createSyntheticFrameGenerator(config.exercise);
+      generator = createSyntheticFrameGenerator(config.exercise, config.subject.requiredView);
     } catch {
       throw new FormCoachError(
         'UNSUPPORTED_PLATFORM',

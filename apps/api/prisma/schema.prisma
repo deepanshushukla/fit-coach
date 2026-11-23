@@ -324,8 +324,12 @@ model EntitlementIssue {
 model SigningKey {
   id            String           @id
   publicKeyPem  String
-  privateKeyPem String
+  privateKeyPem String?
   algorithm     String           @default("RS256")
+  // Which SigningKeyProvider created/owns this key ('local' or 'aws-kms'). The local
+  // provider populates privateKeyPem; the aws-kms provider leaves it null because the
+  // private key material never leaves KMS — see docs/security/entitlement-signing.md.
+  provider      String           @default("local")
   status        SigningKeyStatus @default(ACTIVE)
   createdAt     DateTime         @default(now())
   rotatedAt     DateTime?

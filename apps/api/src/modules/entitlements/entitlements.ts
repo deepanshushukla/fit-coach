@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { env } from '../../lib/env';
 import { ApiError } from '../../lib/errors';
-import { getOrCreateActiveSigningKey, hashClaims, signClaims } from './signing';
+import { getActiveSigningKey, hashClaims, signClaims } from './signing';
 
 export interface IssuedEntitlement {
   token: string;
@@ -57,7 +57,7 @@ export async function issueEntitlement(
   const expiresAt = licence.expiresAt < now ? now : licence.expiresAt;
   const offlineGraceUntil = new Date(expiresAt.getTime() + licence.offlineGraceSeconds * 1000);
 
-  const key = await getOrCreateActiveSigningKey();
+  const key = await getActiveSigningKey();
 
   const claims = {
     iss: env.entitlementIssuer,
@@ -73,7 +73,7 @@ export async function issueEntitlement(
     keyId: key.keyId,
   };
 
-  const token = signClaims(claims, key);
+  const token = await signClaims(claims, key.keyId);
 
   await prisma.entitlementIssue.create({
     data: {

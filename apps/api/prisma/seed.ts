@@ -10,14 +10,17 @@ async function main() {
       id: 'squat',
       name: 'Squat',
       description: 'Lower-body movement with a depth-based repetition cycle.',
-      instructions: 'Stand side-on to the camera with your full body in frame.',
+      instructions: 'Stand side-on or facing the camera, with your full body in frame.',
       publicationStatus: 'PUBLISHED',
       currentVersion: '1.0.0',
       supportedPlatforms: ['ios', 'android', 'react-native', 'expo'],
-      supportedViews: ['side'],
+      supportedViews: ['side', 'front'],
       evaluatorVersion: '1.0.0',
-      limitations: ['Requires a side camera view', 'Depth and back-rounding cues only; no knee-valgus check yet'],
-      setupGuidance: 'Position your phone so your entire body is visible from the side.',
+      limitations: [
+        'Side view checks depth and back-rounding; front view checks depth and knee valgus instead (back-rounding is not visible from the front)',
+        'Only a TypeScript reference implementation exists for front view so far — not yet ported to the native Android/iOS engines',
+      ],
+      setupGuidance: 'Position your phone so your entire body is visible, either from the side or facing the camera.',
     },
   });
 

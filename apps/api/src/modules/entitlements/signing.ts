@@ -1,52 +1,30 @@
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../../lib/prisma';
-import { newId } from '../../lib/ids';
+import { env } from '../../lib/env';
+import type { SigningKeyProvider } from './keyProvider';
+import { LocalDbKeyProvider } from './providers/localDbKeyProvider';
+import { AwsKmsKeyProvider } from './providers/awsKmsKeyProvider';
 
 /**
- * Entitlement signing key management.
- *
- * IMPORTANT (spec 11.2, 14.2): in a production deployment the private key must live in a
- * KMS/HSM and never touch application memory or a general-purpose database row. This
- * reference implementation stores the private key PEM in Postgres so the full signed-
- * entitlement flow is runnable and testable without standing up a cloud KMS — that gap
- * is called out explicitly in docs/security/entitlement-signing.md and must be closed
- * before production use.
+ * Entitlement signing. All key storage/signing detail lives behind `SigningKeyProvider`
+ * (see keyProvider.ts) — this module only picks which provider is active, via
+ * `SIGNING_KEY_PROVIDER`. `local` (the default) stores the private key in Postgres and is
+ * dev/test-only; `aws-kms` never lets the private key leave AWS KMS and is the
+ * production-acceptable option. See docs/security/entitlement-signing.md.
  */
+const provider: SigningKeyProvider =
+  env.signingKeyProvider === 'aws-kms' ? new AwsKmsKeyProvider() : new LocalDbKeyProvider();
 
-export interface SigningKeyPair {
-  keyId: string;
-  publicKeyPem: string;
-  privateKeyPem: string;
+export async function getActiveSigningKey(): Promise<{ keyId: string; publicKeyPem: string }> {
+  return provider.getActiveKey();
 }
 
-export async function getOrCreateActiveSigningKey(): Promise<SigningKeyPair> {
-  const existing = await prisma.signingKey.findFirst({ where: { status: 'ACTIVE' } });
-  if (existing) {
-    return { keyId: existing.id, publicKeyPem: existing.publicKeyPem, privateKeyPem: existing.privateKeyPem };
-  }
-
-  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  });
-
-  const keyId = `entitlement-key-${newId()}`;
-  await prisma.signingKey.create({
-    data: { id: keyId, publicKeyPem: publicKey, privateKeyPem: privateKey, algorithm: 'RS256' },
-  });
-
-  return { keyId, publicKeyPem: publicKey, privateKeyPem: privateKey };
+export async function signClaims(claims: Record<string, unknown>, keyId: string): Promise<string> {
+  return provider.sign(keyId, claims);
 }
 
-export async function getPublicKey(keyId: string): Promise<string | undefined> {
-  const key = await prisma.signingKey.findUnique({ where: { id: keyId } });
-  return key?.publicKeyPem;
-}
-
-export function signClaims(claims: Record<string, unknown>, key: SigningKeyPair): string {
-  return jwt.sign(claims, key.privateKeyPem, { algorithm: 'RS256', keyid: key.keyId });
+export async function rotateSigningKey(): Promise<{ keyId: string; publicKeyPem: string }> {
+  return provider.rotate();
 }
 
 export interface VerifyResult {
@@ -60,7 +38,7 @@ export async function verifyEntitlementToken(token: string): Promise<VerifyResul
   const keyId = decoded && typeof decoded === 'object' ? decoded.header.kid : undefined;
   if (!keyId) return { valid: false, failure: 'malformed' };
 
-  const publicKeyPem = await getPublicKey(keyId);
+  const publicKeyPem = await provider.getPublicKey(keyId);
   if (!publicKeyPem) return { valid: false, failure: 'unknown_key_id' };
 
   try {

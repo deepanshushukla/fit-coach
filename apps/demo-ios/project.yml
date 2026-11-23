@@ -1,0 +1,43 @@
+name: FormCoachDemo
+options:
+  bundleIdPrefix: com.formcoach
+  deploymentTarget:
+    iOS: "16.0"
+
+packages:
+  FormCoachSDK:
+    path: ../../native/ios
+  MediaPipeTasks:
+    # MediaPipeTasksVision's own SPM manifest uses `.unsafeFlags`, which Apple's resolver
+    # only allows when referenced by branch/revision (not a semver requirement) — see
+    # native/ios/Package.swift's comment and google-ai-edge/mediapipe's own Package.swift.
+    url: https://github.com/google-ai-edge/mediapipe
+    branch: master
+
+targets:
+  FormCoachDemo:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: FormCoachDemo/Sources
+    resources:
+      - path: FormCoachDemo/Resources
+    info:
+      path: FormCoachDemo/Info.plist
+      properties:
+        CFBundleDisplayName: FormCoach Demo
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: "FormCoach uses the camera to track your exercise form in real time. Video never leaves the device."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.formcoach.demo
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - package: FormCoachSDK
+        product: FormCoachSDK
+      - package: MediaPipeTasks
+        product: MediaPipeTasksVision

@@ -12,3 +12,13 @@ coverage/
 .expo/
 ios/Pods/
 android/.gradle/
+.gradle/
+local.properties
+*.apk
+*.aab
+.cxx/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.build/
+*.xcodeproj/
