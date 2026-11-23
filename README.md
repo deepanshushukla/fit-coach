@@ -151,3 +151,4 @@ order:
 8. **Is the Vite/React SPA portal the right call long-term**, or do you want it rebuilt on whatever your team already standardizes on (Next.js, Remix, etc.)? (`apps/docs` followed the same pattern for consistency — same question applies to it.)
 9. ~~Usage data retention / export policy?~~ (spec 24 #8) — **a retention sweep now exists** (`npm run usage:retention-sweep`, opt-in via `USAGE_RETENTION_DAYS`/`AUDIT_LOG_RETENTION_DAYS`, unset = keep forever by default). What the actual numbers should be is still your call.
 10. Anything in the "scope decisions" list above you'd have made differently — flag it and I'll change it.
+# fit-coach
